@@ -1,0 +1,62 @@
+# ── Secrets & environment ─────────────────────────────────────────────
+.env
+*.env
+.env.*
+
+# ── Python ────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ── Virtual environments ──────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env/
+
+# ── Raw databases (SQLite) ────────────────────────────────────────────
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Keep sample/exported data
+!data/default/radio_map.json
+!data/default/training_dataset.csv
+!data/default/raw_log.csv
+!data/M1_ClassRoom_radio_map.json
+!fingerprint_maps/
+
+# ── Large raw SDR captures ────────────────────────────────────────────
+*.npy
+*.dat
+*.iq
+*.sigmf-data
+*.sigmf-meta
+
+# ── Node / JS ─────────────────────────────────────────────────────────
+node_modules/
+
+# ── macOS ─────────────────────────────────────────────────────────────
+.DS_Store
+
+# ── Windows ───────────────────────────────────────────────────────────
+Thumbs.db
+desktop.ini
+
+# ── Pytest / test cache ───────────────────────────────────────────────
+.pytest_cache/
+.cache/
+
+# ── IDE / editors ─────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Build artifacts ───────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/

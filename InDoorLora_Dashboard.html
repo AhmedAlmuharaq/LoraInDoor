@@ -1,0 +1,2260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>InDoorLora — Engineering Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root {
+  --bg:          #0a0b0e;
+  --surface:     #111318;
+  --surface-2:   #161921;
+  --border:      #1c1f26;
+  --border-2:    #252b36;
+  --text:        #d8d5cc;
+  --dim:         #5a564e;
+  --accent:      #c49a1a;
+  --nlat:        #d84a2e;
+  --fp:          #6b5cd4;
+  --hmm:         #278a55;
+  --emitter:     #c49a1a;
+  --grid-dot:    #2a2d35;
+  --calibrated:  #278a55;
+  --danger:      #c0392b;
+  --radius:      4px;
+  --mono:        'IBM Plex Mono', monospace;
+  --sans:        'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 13px; }
+body { font-family: var(--sans); background: var(--bg); color: var(--text);
+       display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 2px; }
+
+/* ── Sidebar ────────────────────────────────────────────────────── */
+.sidebar {
+  width: 300px; min-width: 260px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+  flex-shrink: 0;
+}
+.sidebar-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 5;
+  background: var(--surface);
+}
+.sidebar-header h1 {
+  font-family: var(--mono); font-size: 0.85rem; font-weight: 600;
+  letter-spacing: 0.12em; color: var(--accent);
+}
+.section {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.section-title {
+  font-size: 0.6rem; font-weight: 600; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--dim); margin-bottom: 8px;
+}
+
+/* ── Form elements ──────────────────────────────────────────────── */
+label { display: block; font-size: 0.6rem; color: var(--dim);
+        text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+input[type="text"], input[type="number"], select {
+  width: 100%; background: var(--bg); border: 1px solid var(--border-2);
+  color: var(--text); padding: 5px 7px; border-radius: var(--radius);
+  font-family: var(--mono); font-size: 0.75rem; outline: none;
+}
+input:focus, select:focus { border-color: var(--accent); }
+select { cursor: pointer; }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.btn {
+  cursor: pointer; border: none; border-radius: var(--radius);
+  font-family: var(--sans); font-weight: 600; font-size: 0.68rem;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 7px 12px; transition: opacity 0.15s, background 0.15s;
+}
+.btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.btn-accent   { background: var(--accent); color: #000; }
+.btn-ghost    { background: transparent; border: 1px solid var(--border-2); color: var(--dim); }
+.btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-danger   { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+.btn-danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.btn-sm       { padding: 4px 8px; font-size: 0.62rem; }
+.btn-row      { display: flex; gap: 6px; margin-top: 6px; }
+.btn-row .btn { flex: 1; }
+
+/* ── Anchor rows ────────────────────────────────────────────────── */
+.anchor-row { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+.anchor-label {
+  font-family: var(--mono); font-size: 0.7rem; font-weight: 600;
+  color: var(--emitter); width: 22px; flex-shrink: 0;
+}
+.anchor-row input { flex: 1; }
+
+/* ── Calibration ────────────────────────────────────────────────── */
+.progress-bar-wrap {
+  background: var(--bg); border: 1px solid var(--border-2);
+  border-radius: var(--radius); height: 8px; overflow: hidden; margin-top: 6px;
+}
+.progress-bar { height: 100%; background: var(--calibrated); transition: width 0.2s; width: 0%; }
+.calib-list {
+  max-height: 80px; overflow-y: auto; margin-top: 6px;
+  font-family: var(--mono); font-size: 0.65rem;
+  display: flex; flex-wrap: wrap; gap: 3px;
+}
+.calib-tag {
+  background: rgba(39,138,85,0.15); color: var(--calibrated);
+  border: 1px solid rgba(39,138,85,0.3); border-radius: 3px; padding: 2px 5px;
+}
+
+/* ── Connection status ──────────────────────────────────────────── */
+.conn-status {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 0.72rem;
+}
+.conn-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  background: var(--danger); transition: background 0.3s;
+}
+.conn-dot.ok { background: var(--calibrated); }
+.stat-row { display: flex; justify-content: space-between;
+            font-family: var(--mono); font-size: 0.65rem;
+            color: var(--dim); margin-top: 4px; }
+.stat-val { color: var(--text); }
+
+/* ── Main area ──────────────────────────────────────────────────── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.topbar {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 8px 16px; display: flex; align-items: center; gap: 16px;
+  flex-shrink: 0;
+}
+.topbar-title { font-family: var(--mono); font-size: 0.7rem; color: var(--dim); }
+.topbar-title span { color: var(--text); }
+
+/* ── Map container ──────────────────────────────────────────────── */
+.map-wrap {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; padding: 8px; background: var(--bg);
+}
+#room-map { max-width: 100%; max-height: 100%; display: block; }
+
+/* ── Bottom panels ──────────────────────────────────────────────── */
+.panels {
+  display: grid; grid-template-columns: 240px 240px 1fr;
+  gap: 0; border-top: 1px solid var(--border); flex-shrink: 0; height: 140px;
+}
+.panel {
+  background: var(--surface); padding: 10px 12px;
+  border-right: 1px solid var(--border); overflow: hidden;
+}
+.panel:last-child { border-right: none; }
+.panel-title {
+  font-size: 0.58rem; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--dim); margin-bottom: 8px;
+}
+
+/* ── RSSI bars ──────────────────────────────────────────────────── */
+.rssi-row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.rssi-label { font-family: var(--mono); font-size: 0.65rem; color: var(--emitter); width: 18px; }
+.rssi-track { flex: 1; height: 8px; background: var(--bg); border-radius: 2px; overflow: hidden; }
+.rssi-fill { height: 100%; border-radius: 2px; transition: width 0.15s; width: 0%;
+             background: linear-gradient(90deg, #1a6b3a, #2ecc71); }
+.rssi-val { font-family: var(--mono); font-size: 0.6rem; color: var(--dim); width: 56px; text-align: right; }
+
+/* ── Accuracy table ──────────────────────────────────────────────── */
+.acc-table { width: 100%; border-collapse: collapse; font-size: 0.65rem; }
+.acc-table th { color: var(--dim); text-align: left; padding: 2px 4px;
+                font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.acc-table td { padding: 3px 4px; font-family: var(--mono); }
+.dot-nlat { color: var(--nlat); }
+.dot-fp   { color: var(--fp); }
+.dot-hmm  { color: var(--hmm); }
+.status-active   { color: var(--calibrated); font-size: 0.58rem; }
+.status-inactive { color: var(--dim);        font-size: 0.58rem; }
+
+/* ── Event log ───────────────────────────────────────────────────── */
+.log-panel { overflow: hidden; display: flex; flex-direction: column; }
+.log-list {
+  flex: 1; overflow-y: auto; font-family: var(--mono);
+  font-size: 0.6rem; color: var(--dim); line-height: 1.6;
+}
+.log-entry { border-bottom: 1px solid var(--border); padding: 1px 4px; }
+.log-ts { color: var(--accent); margin-right: 6px; }
+
+/* ── Modal ───────────────────────────────────────────────────────── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.8); backdrop-filter: blur(3px);
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-card {
+  background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: 6px; padding: 20px; width: 460px; max-width: 96vw;
+}
+.modal-card h2 {
+  font-family: var(--mono); font-size: 0.8rem; color: var(--accent);
+  letter-spacing: 0.1em; text-transform: uppercase;
+  margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--border);
+}
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px;
+                margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.modal-card.wide { width: 580px; }
+
+/* ── Modal type-toggle (Indoor / Campus) ────────────────────────── */
+.modal-type-toggle {
+  display: flex; gap: 4px; margin-bottom: 14px;
+  background: var(--bg); border: 1px solid var(--border-2);
+  border-radius: var(--radius); padding: 3px;
+}
+.modal-type-opt {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  gap: 5px; padding: 6px 8px; border-radius: 3px; cursor: pointer;
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.05em;
+  color: var(--dim); transition: background 0.12s, color 0.12s;
+  user-select: none;
+}
+.modal-type-opt input[type="radio"] { display: none; }
+.modal-type-opt.active { background: var(--surface-2); color: var(--text); }
+/* Campus anchor rows (lat, lng, building) */
+.campus-anc-row {
+  display: flex; align-items: center; gap: 4px; margin-bottom: 4px;
+}
+.campus-anc-row .anchor-label { width: 22px; flex-shrink: 0; }
+.campus-anc-row input[type="number"] { flex: 2; min-width: 0; }
+.campus-anc-row input[type="text"]   { flex: 1.5; min-width: 0; }
+.campus-anc-st { font-size: 0.75rem; color: var(--dim);
+                 width: 14px; text-align: center; flex-shrink: 0; }
+.campus-anc-st.ok { color: var(--calibrated); }
+
+/* ── Maps Library table ─────────────────────────────────────────── */
+.maps-table { width:100%; border-collapse:collapse; font-size:0.68rem; }
+.maps-table th {
+  text-align:left; padding:5px 8px; font-size:0.58rem;
+  text-transform:uppercase; letter-spacing:0.1em;
+  color:var(--dim); border-bottom:1px solid var(--border);
+}
+.maps-table td { padding:7px 8px; border-bottom:1px solid var(--border); }
+.maps-table tr:hover td { background:var(--surface-2); }
+.map-badge-indoor {
+  background:rgba(39,138,85,0.15); color:var(--calibrated);
+  border:1px solid rgba(39,138,85,0.3); border-radius:3px;
+  padding:1px 5px; font-size:0.58rem;
+}
+.map-badge-campus {
+  background:rgba(196,154,26,0.15); color:var(--accent);
+  border:1px solid rgba(196,154,26,0.3); border-radius:3px;
+  padding:1px 5px; font-size:0.58rem;
+}
+
+/* ── Toast ───────────────────────────────────────────────────────── */
+#toast-container {
+  position: fixed; top: 16px; right: 16px; z-index: 200;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius); padding: 10px 14px;
+  font-size: 0.72rem; min-width: 220px; max-width: 300px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  animation: slide-in 0.2s ease;
+}
+.toast.success { border-left-color: var(--calibrated); }
+.toast.warn    { border-left-color: var(--accent); }
+.toast.error   { border-left-color: var(--danger); }
+@keyframes slide-in { from { opacity:0; transform: translateX(20px); } to { opacity:1; transform: none; } }
+
+/* ── SVG elements ────────────────────────────────────────────────── */
+.grid-dot      { fill: var(--grid-dot); }
+.grid-dot.cal  { fill: var(--calibrated); }
+.grid-dot.act  { fill: var(--accent); animation: glow 0.8s ease-in-out infinite alternate; }
+@keyframes glow { from { r: 3; opacity: 0.8; } to { r: 5; opacity: 1; } }
+.anchor-tooltip {
+  background: var(--accent); color: #000; font-family: var(--mono);
+  font-weight: bold; border: 1px solid #000; padding: 2px 4px; font-size: 0.65rem;
+}
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ─────────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>InDoorLora</h1>
+    <button class="btn btn-ghost btn-sm" onclick="openModal()">+ New Location</button>
+  </div>
+
+  <!-- LOCATION -->
+  <div class="section">
+    <div class="section-title">Location</div>
+    <select id="loc-select" onchange="switchLocation(this.value)">
+      <option value="">— select —</option>
+    </select>
+  </div>
+
+  <!-- DIMENSIONS (editable) -->
+  <div class="section" id="room-section">
+    <div class="section-title">Room</div>
+    <div class="row-3" style="margin-bottom:6px;">
+      <div><label>Width (m)</label>
+        <input type="number" id="dim-w" value="8.0" step="0.5" min="1"></div>
+      <div><label>Height (m)</label>
+        <input type="number" id="dim-h" value="6.0" step="0.5" min="1"></div>
+      <div><label>Grid (m)</label>
+        <input type="number" id="dim-step" value="0.5" step="0.1" min="0.1"></div>
+    </div>
+    <button class="btn btn-ghost btn-sm" style="width:100%;"
+            onclick="saveRoom()">Save Room &amp; Regenerate Grid</button>
+    <div id="room-save-warning"
+         style="font-size:0.58rem;color:var(--danger);margin-top:4px;display:none;">
+      ⚠ This will delete all calibration data for this location.
+    </div>
+  </div>
+
+  <!-- ANCHORS -->
+  <div class="section">
+    <div class="section-title">Anchors</div>
+    <div id="anchor-inputs"></div>
+    <div class="btn-row">
+      <button class="btn btn-ghost btn-sm" onclick="saveAnchors()">Save Anchors</button>
+    </div>
+  </div>
+
+  <!-- CALIBRATION -->
+  <div class="section">
+    <div class="section-title">Calibration</div>
+    <div style="display:flex;gap:4px;align-items:flex-end;">
+      <div style="flex:1;min-width:0;">
+        <label>Grid Point</label>
+        <select id="calib-select" style="width:100%;">
+          <option value="">— select point —</option>
+        </select>
+      </div>
+      <button class="btn btn-danger btn-sm" style="padding:4px 7px;flex-shrink:0;"
+              title="Remove selected point" onclick="removeCalibPoint()">🗑</button>
+    </div>
+    <div class="btn-row" style="margin-top:6px;">
+      <button class="btn btn-accent btn-sm" id="btn-start-calib" onclick="startCalib()" disabled>▶ Start</button>
+      <button class="btn btn-danger btn-sm" id="btn-stop-calib"  onclick="stopCalib()"  disabled>■ Stop</button>
+    </div>
+
+    <!-- ── Campus-only: add calibration point ──────────────────────── -->
+    <div id="campus-add-section" style="display:none;
+         border:1px solid var(--border-2);border-radius:var(--radius);
+         padding:8px;margin-top:8px;">
+      <div class="section-title" style="margin-bottom:6px;">Add Point</div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:4px;"
+              onclick="addCampusPointGPS()">➕ Add at My Location</button>
+      <div style="text-align:center;font-size:0.6rem;color:var(--dim);margin:2px 0;">
+        — or —
+      </div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;"
+              id="btn-map-place" onclick="toggleMapPlacement()">
+        🗺 Click Map to Place
+      </button>
+      <div id="place-status"
+           style="font-size:0.6rem;color:var(--dim);margin-top:4px;text-align:center;">
+      </div>
+    </div>
+    <!-- ─────────────────────────────────────────────────────────────── -->
+
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:6px;"
+            id="btn-gen-synthetic" onclick="genSynthetic()">Gen Synthetic Map</button>
+    <div class="btn-row" style="margin-top:6px;">
+      <button class="btn btn-ghost btn-sm" onclick="downloadMap()">📥 Export Map</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('map-upload').click()">📤 Import Map</button>
+      <input type="file" id="map-upload" accept=".json" style="display:none" onchange="uploadMap(event)">
+    </div>
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px;"
+            onclick="openMapsLibrary()">📂 Maps Library</button>
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:4px;"
+            onclick="saveToDataFolder()" title="Save radio_map.json + training_dataset.csv + raw_rssi_log.csv to data/ folder">
+      💾 Save to Data Folder
+    </button>
+    <div id="calib-label" style="font-family:var(--mono);font-size:0.62rem;color:var(--dim);margin-top:4px;">Ready</div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="calib-bar"></div></div>
+    <div class="calib-list" id="calib-list"></div>
+  </div>
+
+  <!-- GPS REFERENCE -->
+  <div class="section">
+    <div class="section-title">GPS Reference (OSM)</div>
+    <div class="row-2" style="margin-bottom:6px;">
+      <div><label>Latitude</label><input type="number" id="gps-lat" value="47.639674" step="0.000001"></div>
+      <div><label>Longitude</label><input type="number" id="gps-lng" value="6.863849" step="0.000001"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-ghost btn-sm" onclick="applyGPS()">Update Map</button>
+    </div>
+  </div>
+
+  <!-- CONNECTION -->
+  <div class="section">
+    <div class="section-title">Connection</div>
+    <div class="conn-status">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-label" style="font-family:var(--mono);font-size:0.7rem;">Disconnected</span>
+    </div>
+    <div class="stat-row"><span>Packets</span><span class="stat-val" id="stat-pkts">0</span></div>
+    <div class="stat-row"><span>Rate</span><span class="stat-val" id="stat-rate">0.0/s</span></div>
+    <div class="stat-row"><span>DB</span><span class="stat-val" style="color:var(--dim)">indoorlora.db</span></div>
+  </div>
+</aside>
+
+<!-- ── Main ──────────────────────────────────────────────────────────── -->
+<main class="main">
+  <div class="topbar">
+    <div class="topbar-title">SITE: <span id="top-site">—</span></div>
+    <div class="topbar-title">DIM: <span id="top-dim">—</span></div>
+    <div class="topbar-title">GRID: <span id="top-pts">—</span></div>
+    <div id="data-source-badge"
+         style="font-family:var(--mono);font-size:0.6rem;font-weight:700;
+                padding:3px 8px;border-radius:3px;letter-spacing:0.08em;
+                background:#2a1a00;color:#c49a1a;border:1px solid #c49a1a;
+                display:none;">
+      ⚠ SIM
+    </div>
+    <div style="flex:1"></div>
+    <div style="display:flex;gap:10px;align-items:center;border-right:1px solid var(--border);padding-right:12px;margin-right:12px;">
+      <label style="cursor:pointer;font-size:0.65rem;color:var(--nlat);display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="cb-nlat" checked> NLat
+      </label>
+      <label style="cursor:pointer;font-size:0.65rem;color:var(--fp);display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="cb-fp" checked> FP
+      </label>
+      <label style="cursor:pointer;font-size:0.65rem;color:var(--hmm);display:flex;align-items:center;gap:4px;">
+        <input type="checkbox" id="cb-hmm" checked> HMM
+      </label>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;">
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.68rem;color:var(--dim);">
+        <input type="checkbox" id="cb-trail" checked> Trail
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.68rem;color:var(--dim);">
+        <input type="checkbox" id="cb-circles" onchange="updateCircles(S.rssi)"> Range circles
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.68rem;color:var(--nlat);">
+        <input type="checkbox" id="cb-intersect"> ∩ Intersections
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.68rem;color:var(--nlat);">
+        <input type="checkbox" id="cb-raw-nlat"> ◌ Raw NLat
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.68rem;color:#3b82f6;">
+        <input type="checkbox" id="cb-gt"> ◆ Ground Truth
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.68rem;color:var(--nlat);">
+        <input type="checkbox" id="cb-confidence"> ⊙ Confidence
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:0.68rem;color:var(--accent);">
+        <input type="checkbox" id="cb-osm" onchange="toggleOSM()"> 🌐 OSM MAP
+      </label>
+    </div>
+  </div>
+
+  <div class="map-wrap" style="position:relative;">
+    <svg id="room-map" style="position:absolute;z-index:2;width:100%;height:100%;"></svg>
+    <div id="osm-map" style="display:none;position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;"></div>
+  </div>
+
+  <div class="panels">
+    <!-- RSSI -->
+    <div class="panel">
+      <div class="panel-title">RSSI Signal</div>
+      <div id="rssi-bars"></div>
+    </div>
+
+    <!-- Accuracy -->
+    <div class="panel">
+      <div class="panel-title">Position Estimates</div>
+      <table class="acc-table">
+        <thead><tr><th>Algo</th><th>X, Y</th><th>Err (m)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="dot-nlat" style="opacity:0.55;">◌ Raw</td>
+            <td id="acc-nlat-raw-pos" style="font-size:0.62rem;">—</td>
+            <td id="acc-nlat-raw-err" style="font-family:var(--mono);font-size:0.62rem;color:var(--nlat);">—</td>
+          </tr>
+          <tr>
+            <td class="dot-nlat">■ NLat</td>
+            <td id="acc-nlat-pos" style="font-size:0.62rem;">—</td>
+            <td id="acc-nlat-err" style="font-family:var(--mono);font-size:0.62rem;color:var(--nlat);">—</td>
+          </tr>
+          <tr>
+            <td class="dot-fp">■ FP</td>
+            <td id="acc-fp-pos"   style="font-size:0.62rem;">—</td>
+            <td id="acc-fp-err"   style="font-family:var(--mono);font-size:0.62rem;color:var(--fp);">—</td>
+          </tr>
+          <tr>
+            <td class="dot-hmm">■ HMM</td>
+            <td id="acc-hmm-pos"  style="font-size:0.62rem;">—</td>
+            <td id="acc-hmm-err"  style="font-family:var(--mono);font-size:0.62rem;color:var(--hmm);">—</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="margin-top:5px;font-family:var(--mono);font-size:0.58rem;color:var(--dim);display:flex;gap:8px;flex-wrap:wrap;">
+        <span>GT: <span id="gt-label" style="color:var(--text);">not set</span></span>
+        <span>MAE: <span id="stat-mae" style="color:var(--accent);">—</span></span>
+        <span>RMSE: <span id="stat-rmse" style="color:var(--accent);">—</span></span>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="panel log-panel">
+      <div class="panel-title">Event Log</div>
+      <div class="log-list" id="log-list"></div>
+    </div>
+  </div>
+</main>
+
+<!-- ── Create Location Modal ──────────────────────────────────────────── -->
+<div class="modal-overlay" id="create-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card" id="modal-card">
+    <h2>New Location</h2>
+
+    <!-- ─ Type selector ─────────────────────────────────────────── -->
+    <div class="modal-type-toggle">
+      <label class="modal-type-opt active" id="opt-indoor"
+             onclick="switchModalMode('indoor_room')">
+        <input type="radio" name="m-type" value="indoor_room" checked>
+        ◉ Indoor Room
+      </label>
+      <label class="modal-type-opt" id="opt-campus"
+             onclick="switchModalMode('campus_outdoor')">
+        <input type="radio" name="m-type" value="campus_outdoor">
+        ○ Campus Outdoor
+      </label>
+    </div>
+
+    <!-- ─ Shared: Name ──────────────────────────────────────────── -->
+    <div style="margin-bottom:10px;">
+      <label>Name</label>
+      <input type="text" id="m-name" placeholder="e.g. Lab B204">
+    </div>
+
+    <!-- ─ INDOOR section ────────────────────────────────────────── -->
+    <div id="modal-indoor-sec">
+      <div class="row-3" style="gap:10px;margin-bottom:10px;">
+        <div><label>Width (m)</label>
+          <input type="number" id="m-w" value="8.0" step="0.5" min="1"
+                 oninput="updateModalAnchors()"></div>
+        <div><label>Height (m)</label>
+          <input type="number" id="m-h" value="6.0" step="0.5" min="1"
+                 oninput="updateModalAnchors()"></div>
+        <div><label>Grid step (m)</label>
+          <input type="number" id="m-step" value="0.5" step="0.1" min="0.1"></div>
+      </div>
+      <div class="section-title" style="margin-bottom:6px;">Anchor Positions (meters)</div>
+      <div id="modal-anchors"></div>
+      <button class="btn btn-ghost btn-sm" style="margin-top:5px;"
+              onclick="autoPlaceAnchors()">Auto-place at corners</button>
+    </div>
+
+    <!-- ─ CAMPUS section ────────────────────────────────────────── -->
+    <div id="modal-campus-sec" style="display:none;">
+      <div style="margin-bottom:10px;">
+        <label>Preset</label>
+        <select id="m-preset" onchange="loadCampusPreset()"></select>
+      </div>
+      <div class="row-3" style="gap:8px;margin-bottom:10px;">
+        <div><label>Lat (center)</label>
+          <input type="number" id="m-lat" step="any" placeholder="47.49572"
+                 oninput="onModalCenterChange()"></div>
+        <div><label>Lng (center)</label>
+          <input type="number" id="m-lng" step="any" placeholder="6.80482"
+                 oninput="onModalCenterChange()"></div>
+        <div><label>Zoom</label>
+          <input type="number" id="m-zoom" value="17" min="10" max="20"></div>
+      </div>
+      <div class="section-title" style="margin-bottom:5px;">
+        Anchor Positions — GPS
+        <span id="campus-hint"
+              style="color:var(--accent);font-weight:400;margin-left:6px;font-size:0.65rem;">
+          Click map → place E0
+        </span>
+      </div>
+      <div id="modal-map-wrap"
+           style="width:100%;height:280px;border:1px solid var(--border-2);
+                  border-radius:4px;margin-bottom:10px;overflow:hidden;"></div>
+      <div id="modal-campus-ancs"></div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="createLocation()">Create Location</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Maps Library Modal ────────────────────────────────────────────── -->
+<div class="modal-overlay" id="maps-modal"
+     onclick="if(event.target===this)closeMapsLibrary()">
+  <div class="modal-card" style="width:560px;max-height:80vh;
+       display:flex;flex-direction:column;">
+    <h2 style="flex-shrink:0;">📂 Fingerprint Maps Library</h2>
+    <div style="flex:1;overflow-y:auto;">
+      <div id="maps-lib-body" style="font-size:0.72rem;">
+        <div style="color:var(--dim);text-align:center;padding:20px;">
+          Loading…
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="flex-shrink:0;">
+      <button class="btn btn-ghost btn-sm"
+              onclick="document.getElementById('lib-upload').click()">
+        📤 Import Any Map
+      </button>
+      <input type="file" id="lib-upload" accept=".json"
+             style="display:none" onchange="importLibMap(event)">
+      <div style="flex:1"></div>
+      <button class="btn btn-ghost" onclick="closeMapsLibrary()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toasts ─────────────────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────
+const S = {
+  locations:          [],
+  loc:                null,
+  anchors:            [],
+  gridPoints:         [],
+  calibratedIds:      new Set(),
+  calibActive:        false,
+  calibGpId:          null,
+  rssi:               {},
+  positions:          {nlat: null, fp: null, hmm: null, nlat_raw: null, intersections: [], uncertainty_m: 0},
+  trails:             {nlat: [], fp: [], hmm: []},
+  logEntries:         [],
+  pktCount:           0,
+  pktTimes:           [],
+  connected:          false,
+  campusPresets:      [],      // loaded from campus_presets WS message
+  // Computation-transparency state
+  gt:                 null,    // {x, y} ground truth in room coords
+  errHistory:         [],      // running error samples for MAE/RMSE
+};
+
+const MAX_TRAIL = 40;
+const MAX_LOG   = 30;
+// SVG layout constants
+const PAD = {t: 24, r: 16, b: 36, l: 40};
+const PX_PER_M = 72;   // logical pixels per metre in the SVG
+
+// ── Toast ──────────────────────────────────────────────────────────────
+function toast(msg, type = 'success', dur = 4000) {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), dur);
+}
+
+// ── Coordinate helpers ─────────────────────────────────────────────────
+function svgX(rx) { return PAD.l + rx * PX_PER_M; }
+function svgY(ry) {
+  const h = S.loc ? S.loc.height : 6;
+  return PAD.t + (h - ry) * PX_PER_M;
+}
+function svgW() { return S.loc ? PAD.l + S.loc.width * PX_PER_M + PAD.r : 600; }
+function svgH() { return S.loc ? PAD.t + S.loc.height * PX_PER_M + PAD.b : 460; }
+
+// ── RSSI bars (initial render) ─────────────────────────────────────────
+function buildRssiBars() {
+  document.getElementById('rssi-bars').innerHTML = ['E0','E1','E2','E3'].map(a =>
+    `<div class="rssi-row">
+       <span class="rssi-label">${a}</span>
+       <div class="rssi-track"><div class="rssi-fill" id="rb-${a}"></div></div>
+       <span class="rssi-val" id="rv-${a}">— dBm</span>
+     </div>`
+  ).join('');
+}
+buildRssiBars();
+
+function updateRssiBars(rssiDict) {
+  for (const a of ['E0','E1','E2','E3']) {
+    const v = rssiDict[a];
+    if (v == null) continue;
+    const pct = Math.max(0, Math.min(100, (v - (-90)) / ((-30) - (-90)) * 100));
+    document.getElementById(`rb-${a}`).style.width = `${pct}%`;
+    document.getElementById(`rv-${a}`).textContent = `${v.toFixed(1)} dBm`;
+  }
+}
+
+// ── Log ────────────────────────────────────────────────────────────────
+function addLog(rssiDict) {
+  const now = new Date();
+  const ts  = `${now.getHours().toString().padStart(2,'0')}:` +
+              `${now.getMinutes().toString().padStart(2,'0')}:` +
+              `${now.getSeconds().toString().padStart(2,'0')}.` +
+              `${now.getMilliseconds().toString().padStart(3,'0')}`;
+  const vals = ['E0','E1','E2','E3']
+    .filter(a => rssiDict[a] != null)
+    .map(a => `${a}:${rssiDict[a].toFixed(1)}`)
+    .join('  ');
+  S.logEntries.unshift(`<span class="log-ts">${ts}</span>${vals}`);
+  if (S.logEntries.length > MAX_LOG) S.logEntries.pop();
+  document.getElementById('log-list').innerHTML =
+    S.logEntries.map(e => `<div class="log-entry">${e}</div>`).join('');
+}
+
+// ── SVG room map ───────────────────────────────────────────────────────
+function buildMap() {
+  if (!S.loc) return;
+  const svg  = document.getElementById('room-map');
+  const W    = svgW(), H = svgH();
+  const rW   = S.loc.width, rH = S.loc.height;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width',   W);
+  svg.setAttribute('height',  H);
+
+  let html = '';
+
+  // ── Axes ────────────────────────────────────────────────────────
+  // Axis lines
+  html += `<line x1="${PAD.l}" y1="${PAD.t}" x2="${PAD.l}" y2="${PAD.t+rH*PX_PER_M}" stroke="#2a2d35" stroke-width="1"/>`;
+  html += `<line x1="${PAD.l}" y1="${PAD.t+rH*PX_PER_M}" x2="${PAD.l+rW*PX_PER_M}" y2="${PAD.t+rH*PX_PER_M}" stroke="#2a2d35" stroke-width="1"/>`;
+  // X ticks
+  for (let x = 0; x <= rW + 0.001; x += 1.0) {
+    x = parseFloat(x.toFixed(6));
+    const px = svgX(Math.min(x, rW));
+    html += `<line x1="${px}" y1="${PAD.t+rH*PX_PER_M}" x2="${px}" y2="${PAD.t+rH*PX_PER_M+4}" stroke="#2a2d35" stroke-width="1"/>`;
+    html += `<text x="${px}" y="${PAD.t+rH*PX_PER_M+14}" fill="#3a3d45" font-size="9" font-family="IBM Plex Mono" text-anchor="middle">${Math.min(x,rW).toFixed(0)}</text>`;
+  }
+  // Y ticks
+  for (let y = 0; y <= rH + 0.001; y += 1.0) {
+    y = parseFloat(y.toFixed(6));
+    const py = svgY(Math.min(y, rH));
+    html += `<line x1="${PAD.l-4}" y1="${py}" x2="${PAD.l}" y2="${py}" stroke="#2a2d35" stroke-width="1"/>`;
+    html += `<text x="${PAD.l-6}" y="${py+3}" fill="#3a3d45" font-size="9" font-family="IBM Plex Mono" text-anchor="end">${Math.min(y,rH).toFixed(0)}</text>`;
+  }
+
+  // ── Room border ──────────────────────────────────────────────────
+  html += `<rect x="${svgX(0)}" y="${svgY(rH)}" width="${rW*PX_PER_M}" height="${rH*PX_PER_M}"
+             fill="none" stroke="#252b36" stroke-width="1.5"/>`;
+
+  // ── Grid points ──────────────────────────────────────────────────
+  html += `<g id="gp-layer">`;
+  for (const p of S.gridPoints) {
+    const cls = S.calibratedIds.has(p.id) ? 'cal' :
+                (S.calibActive && S.calibGpId === p.id ? 'act' : '');
+    html += `<circle id="gp-${p.id}" class="grid-dot ${cls}"
+               cx="${svgX(p.x)}" cy="${svgY(p.y)}" r="4" style="cursor:pointer;"
+               onclick="selectAndCalib(${p.id})"
+               data-label="${p.label}" data-x="${p.x}" data-y="${p.y}">
+               <title>${p.label} (${p.x}, ${p.y}) - Click to Calibrate</title>
+             </circle>`;
+  }
+  html += `</g>`;
+
+  // ── Range circles ─────────────────────────────────────────────────
+  html += `<g id="circles-layer" style="display:none;">`;
+  for (const a of S.anchors) {
+    html += `<circle id="rc-${a.name}" cx="${svgX(a.x)}" cy="${svgY(a.y)}" r="0"
+               fill="none" stroke="var(--nlat)" stroke-width="1" stroke-dasharray="4,4" opacity="0.4"/>`;
+  }
+  html += `</g>`;
+
+  // ── Trails ────────────────────────────────────────────────────────
+  html += `<polyline id="trail-nlat" points="" fill="none" stroke="var(--nlat)" stroke-width="1" opacity="0.35"/>`;
+  html += `<polyline id="trail-fp"   points="" fill="none" stroke="var(--fp)"   stroke-width="1" opacity="0.35"/>`;
+  html += `<polyline id="trail-hmm"  points="" fill="none" stroke="var(--hmm)"  stroke-width="1.5" opacity="0.4"/>`;
+
+  // ── Anchors ───────────────────────────────────────────────────────
+  for (const a of S.anchors) {
+    const ax = svgX(a.x), ay = svgY(a.y);
+    html += `<rect x="${ax-7}" y="${ay-7}" width="14" height="14"
+               fill="var(--emitter)" stroke="#000" stroke-width="1" rx="2"/>`;
+    html += `<text x="${ax}" y="${ay+4}" fill="#000" font-size="8" font-weight="700"
+               text-anchor="middle" font-family="IBM Plex Mono">${a.name}</text>`;
+    html += `<text x="${ax}" y="${ay+19}" fill="var(--dim)" font-size="8"
+               text-anchor="middle" font-family="IBM Plex Mono">
+               (${a.x.toFixed(1)},${a.y.toFixed(1)})</text>`;
+  }
+
+  // ── Position dots ─────────────────────────────────────────────────
+  html += `<circle id="dot-nlat" cx="-99" cy="-99" r="6" fill="var(--nlat)" opacity="0.9"/>`;
+  html += `<circle id="dot-fp"   cx="-99" cy="-99" r="5" fill="var(--fp)"   opacity="0.9"/>`;
+  html += `<circle id="dot-hmm"  cx="-99" cy="-99" r="7" fill="var(--hmm)"  opacity="0.9" stroke="#0a0b0e" stroke-width="1.5"/>`;
+
+  // ── Computation-transparency layer (above position dots) ──────────
+  // Confidence circle: semi-transparent fill, radius = uncertainty in px
+  html += `<circle id="circle-confidence" cx="-99" cy="-99" r="0"
+             fill="rgba(216,74,46,0.10)" stroke="none" style="display:none;"/>`;
+  // Pull line: raw solver → EMA smoothed
+  html += `<line id="line-raw-smooth" x1="-99" y1="-99" x2="-99" y2="-99"
+             stroke="var(--nlat)" stroke-width="1" stroke-dasharray="3,2" opacity="0.55"
+             style="display:none;"/>`;
+  // Raw N-Lat dot: hollow circle
+  html += `<circle id="dot-nlat-raw" cx="-99" cy="-99" r="4"
+             fill="none" stroke="var(--nlat)" stroke-width="1.5" opacity="0.8"
+             style="display:none;"/>`;
+  // Intersection X-markers (rebuilt on each packet)
+  html += `<g id="layer-intersections" style="display:none;"></g>`;
+  // Ground-truth diamond
+  html += `<polygon id="dot-gt" points="-99,-99"
+             fill="#3b82f6" stroke="white" stroke-width="1.2" opacity="0.9"
+             style="display:none;"/>`;
+
+  svg.innerHTML = html;
+
+  // Re-attach trail state
+  for (const algo of ['nlat','fp','hmm']) {
+    if (S.trails[algo].length > 0) redrawTrail(algo);
+  }
+}
+
+// ── Trail helpers ──────────────────────────────────────────────────────
+function redrawTrail(algo) {
+  const poly = document.getElementById(`trail-${algo}`);
+  if (!poly || S.trails[algo].length < 2) return;
+  const show = document.getElementById('cb-trail').checked;
+  poly.setAttribute('points', show
+    ? S.trails[algo].map(p => `${p.x},${p.y}`).join(' ')
+    : '');
+}
+
+function pushTrail(algo, x, y) {
+  S.trails[algo].push({x: svgX(x), y: svgY(y)});
+  if (S.trails[algo].length > MAX_TRAIL) S.trails[algo].shift();
+  redrawTrail(algo);
+}
+
+// ── Ground Truth helpers ───────────────────────────────────────────────
+function setGT(rx, ry) {
+  S.gt = {x: rx, y: ry};
+  const px = svgX(rx), py = svgY(ry), d = 8;
+  const el = document.getElementById('dot-gt');
+  if (el) {
+    el.setAttribute('points',
+      `${px},${py-d} ${px+d},${py} ${px},${py+d} ${px-d},${py}`);
+    el.style.display = '';
+  }
+  document.getElementById('gt-label').textContent =
+    `(${rx.toFixed(2)}, ${ry.toFixed(2)})`;
+}
+
+function clearGT() {
+  S.gt = null;  S.errHistory = [];
+  const el = document.getElementById('dot-gt');
+  if (el) el.style.display = 'none';
+  document.getElementById('gt-label').textContent = 'not set';
+  ['acc-nlat-raw-err','acc-nlat-err','acc-fp-err','acc-hmm-err',
+   'stat-mae','stat-rmse'].forEach(id => {
+    const e = document.getElementById(id); if (e) e.textContent = '—';
+  });
+}
+
+function _gtDist(pos) {
+  return (S.gt && pos)
+    ? Math.hypot(pos.x - S.gt.x, pos.y - S.gt.y)
+    : null;
+}
+
+// ── Computation transparency: raw dot, intersections, confidence ────────
+function updateTransparency(msg) {
+  const showRaw   = document.getElementById('cb-raw-nlat')?.checked;
+  const showConf  = document.getElementById('cb-confidence')?.checked;
+  const showInter = document.getElementById('cb-intersect')?.checked;
+
+  // Raw NLat dot + pull line
+  const rawEl  = document.getElementById('dot-nlat-raw');
+  const lineEl = document.getElementById('line-raw-smooth');
+  if (rawEl && msg.nlat_raw) {
+    const rx = svgX(msg.nlat_raw.x), ry = svgY(msg.nlat_raw.y);
+    rawEl.setAttribute('cx', rx);  rawEl.setAttribute('cy', ry);
+    rawEl.style.display = showRaw ? '' : 'none';
+    if (lineEl && msg.nlat) {
+      lineEl.setAttribute('x1', rx);  lineEl.setAttribute('y1', ry);
+      lineEl.setAttribute('x2', svgX(msg.nlat.x));
+      lineEl.setAttribute('y2', svgY(msg.nlat.y));
+      lineEl.style.display = showRaw ? '' : 'none';
+    }
+  }
+
+  // Confidence circle
+  const confEl = document.getElementById('circle-confidence');
+  if (confEl && msg.nlat) {
+    confEl.setAttribute('cx', svgX(msg.nlat.x));
+    confEl.setAttribute('cy', svgY(msg.nlat.y));
+    confEl.setAttribute('r',  ((msg.uncertainty_m || 0) * PX_PER_M).toFixed(1));
+    confEl.style.display = showConf ? '' : 'none';
+  }
+
+  // Intersection X-markers
+  const layer = document.getElementById('layer-intersections');
+  if (layer) {
+    layer.style.display = showInter ? '' : 'none';
+    if (showInter && msg.intersections?.length) {
+      const s = 4;
+      layer.innerHTML = msg.intersections.map(pt => {
+        const px = svgX(pt.x), py = svgY(pt.y);
+        return `<line x1="${px-s}" y1="${py-s}" x2="${px+s}" y2="${py+s}"
+                  stroke="#c49a1a" stroke-width="1.5" opacity="0.75"/>
+                <line x1="${px+s}" y1="${py-s}" x2="${px-s}" y2="${py+s}"
+                  stroke="#c49a1a" stroke-width="1.5" opacity="0.75"/>`;
+      }).join('');
+    }
+  }
+
+  // Error column + running MAE/RMSE
+  const e_raw  = _gtDist(msg.nlat_raw);
+  const e_nlat = _gtDist(msg.nlat);
+  const e_fp   = _gtDist(msg.fp);
+  const e_hmm  = _gtDist(msg.hmm);
+  const fmt    = v => v != null ? v.toFixed(3) : '—';
+  const _s     = id => document.getElementById(id);
+
+  if (_s('acc-nlat-raw-pos') && msg.nlat_raw)
+    _s('acc-nlat-raw-pos').textContent =
+      `${msg.nlat_raw.x.toFixed(2)}, ${msg.nlat_raw.y.toFixed(2)}`;
+  if (_s('acc-nlat-raw-err')) _s('acc-nlat-raw-err').textContent = fmt(e_raw);
+  if (_s('acc-nlat-err'))     _s('acc-nlat-err').textContent     = fmt(e_nlat);
+  if (_s('acc-fp-err'))       _s('acc-fp-err').textContent       = fmt(e_fp);
+  if (_s('acc-hmm-err'))      _s('acc-hmm-err').textContent      = fmt(e_hmm);
+
+  if (S.gt) {
+    const vals = [e_raw, e_nlat, e_fp, e_hmm].filter(v => v != null);
+    if (vals.length) {
+      S.errHistory.push(...vals);
+      if (S.errHistory.length > 200) S.errHistory.splice(0, S.errHistory.length - 200);
+      const mae  = S.errHistory.reduce((s,v)=>s+v,0) / S.errHistory.length;
+      const rmse = Math.sqrt(S.errHistory.reduce((s,v)=>s+v*v,0) / S.errHistory.length);
+      if (_s('stat-mae'))  _s('stat-mae').textContent  = mae.toFixed(3)  + ' m';
+      if (_s('stat-rmse')) _s('stat-rmse').textContent = rmse.toFixed(3) + ' m';
+    }
+  }
+}
+
+// ── Move a position dot ────────────────────────────────────────────────
+function moveDoc(id, x, y) {
+  const el = document.getElementById(id);
+  if (el) { el.setAttribute('cx', svgX(x)); el.setAttribute('cy', svgY(y)); }
+}
+
+// ── Range circles & Intersections ─────────────────────────────────────
+function updateCircles(rssiDict) {
+  if (!rssiDict) return;
+  S.rssi = rssiDict;
+
+  const showCircles = document.getElementById('cb-circles').checked;
+  const showIntersect = document.getElementById('cb-intersect').checked;
+
+  document.getElementById('circles-layer').style.display = (showCircles || showIntersect) ? '' : 'none';
+
+  if (!showCircles && !showIntersect) return;
+
+  const A = -42.0, N = 2.2;
+
+  for (const a of S.anchors) {
+    const r = rssiDict[a.name];
+    const el = document.getElementById(`rc-${a.name}`);
+    if (!el) continue;
+
+    if (r == null) {
+      el.style.display = 'none';
+      continue;
+    }
+
+    const d = 10 ** ((A - r) / (10 * N));
+    el.style.display = '';
+    el.setAttribute('r', (d * PX_PER_M).toFixed(1));
+
+    if (showIntersect) {
+      el.setAttribute('fill', 'rgba(216, 74, 46, 0.15)');
+      el.setAttribute('stroke', 'var(--nlat)');
+      el.setAttribute('stroke-dasharray', 'none');
+    } else {
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', 'var(--nlat)');
+      el.setAttribute('stroke-dasharray', '4,4');
+    }
+  }
+}
+
+// ── Sidebar anchor inputs ──────────────────────────────────────────────
+function buildAnchorInputs() {
+  const isCampus = S.loc?.location_type === 'campus_outdoor';
+  document.getElementById('anchor-inputs').innerHTML = S.anchors.map(a => {
+    const rmBtn = `<button class="btn btn-danger btn-sm" style="padding:2px 6px;flex-shrink:0;"
+        onclick="removeAnchor('${a.name}')">✕</button>`;
+    if (isCampus) {
+      const bld = a.building || '';
+      return `<div class="anchor-row" style="flex-wrap:wrap;gap:3px;margin-bottom:4px;">
+        <span class="anchor-label">${a.name}</span>
+        <input type="number" id="ai-${a.name}-lat" value="${a.lat ?? ''}"
+               step="any" placeholder="Lat" style="flex:2;min-width:0;"
+               oninput="moveCampusAnchor('${a.name}')">
+        <input type="number" id="ai-${a.name}-lng" value="${a.lng ?? ''}"
+               step="any" placeholder="Lng" style="flex:2;min-width:0;"
+               oninput="moveCampusAnchor('${a.name}')">
+        <input type="text" id="ai-${a.name}-bld" value="${bld}"
+               placeholder="Bldg" style="flex:1.5;min-width:0;">
+        ${rmBtn}
+      </div>`;
+    }
+    return `<div class="anchor-row">
+      <span class="anchor-label">${a.name}</span>
+      <input type="number" id="ai-${a.name}-x" value="${a.x}" step="0.1" placeholder="X">
+      <input type="number" id="ai-${a.name}-y" value="${a.y}" step="0.1" placeholder="Y">
+      ${rmBtn}
+    </div>`;
+  }).join('');
+}
+
+// ── Calibration point dropdown ─────────────────────────────────────────
+function buildCalibSelect() {
+  const sel      = document.getElementById('calib-select');
+  const isCampus = S.loc?.location_type === 'campus_outdoor';
+  sel.innerHTML = '<option value="">— select point —</option>' +
+    S.gridPoints.map(p => {
+      const coord = (isCampus && p.lat != null)
+        ? ` (${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)})`
+        : ` (${p.x.toFixed(1)}, ${p.y.toFixed(1)})`;
+      return `<option value="${p.id}">${p.label}${coord}</option>`;
+    }).join('');
+  document.getElementById('btn-start-calib').disabled = false;
+}
+
+// ── Calibrated points tag list ─────────────────────────────────────────
+function buildCalibList() {
+  const calibrated = S.gridPoints.filter(p => S.calibratedIds.has(p.id));
+  document.getElementById('calib-list').innerHTML =
+    calibrated.map(p => `<span class="calib-tag">✓${p.label}</span>`).join('');
+}
+
+// ── Mark a grid point on the map ───────────────────────────────────────
+function updateGpDot(id, cls) {
+  const el = document.getElementById(`gp-${id}`);
+  if (!el) return;
+  el.className.baseVal = `grid-dot ${cls}`;
+}
+
+// ── Location management ────────────────────────────────────────────────
+function buildLocSelect() {
+  const sel = document.getElementById('loc-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— select —</option>' +
+    S.locations.map(l =>
+      `<option value="${l.id}" ${l.is_active ? 'selected' : ''}>${l.name}</option>`
+    ).join('');
+  if (cur && !sel.value) sel.value = cur;
+}
+
+function switchLocation(id) {
+  if (!id || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({action: 'set_active', location_id: parseInt(id)}));
+}
+
+// ── Load active location data into UI ──────────────────────────────────
+function applyActiveLocation(data) {
+  S.loc     = data.location;
+  // Keep full anchor record (lat/lng/building preserved for campus mode)
+  S.anchors = (data.anchors || []).map(a => ({
+    name: a.name || a.id,
+    x: a.x, y: a.y,
+    lat: a.lat ?? null, lng: a.lng ?? null,
+    building: a.building ?? null,
+  }));
+  S.gridPoints    = data.grid_points || [];
+  S.calibratedIds = new Set(data.location?.calibrated_point_ids || []);
+  S.trails        = {nlat: [], fp: [], hmm: []};
+
+  const isCampus = S.loc?.location_type === 'campus_outdoor';
+
+  if (S.loc) {
+    document.getElementById('dim-w').value    = S.loc.width;
+    document.getElementById('dim-h').value    = S.loc.height;
+    document.getElementById('dim-step').value = S.loc.grid_step;
+    document.getElementById('top-site').textContent = S.loc.name;
+    document.getElementById('top-dim').textContent  =
+      `${S.loc.width}m × ${S.loc.height}m`;
+    document.getElementById('top-pts').textContent  =
+      `${S.gridPoints.length} pts / ${S.calibratedIds.size} cal`;
+    // Hide ROOM dimensions panel for campus (they're synthetic, not real)
+    document.querySelector('.section-title + .row-3')?.closest('.section')
+      ?.style.setProperty('display', isCampus ? 'none' : '');
+  }
+
+  buildAnchorInputs();
+  buildCalibSelect();
+  buildCalibList();
+
+  if (isCampus) {
+    // ── Campus: force OSM view ──────────────────────────────────────────
+    document.getElementById('room-map').style.display = 'none';
+    document.getElementById('osm-map').style.display  = 'block';
+    document.getElementById('cb-osm').checked = true;
+    document.getElementById('campus-add-section').style.display = 'block';
+    document.getElementById('btn-gen-synthetic').style.display  = 'none';
+    // Set GPS reference inputs to SW-corner (campus_lat_ref / campus_lng_ref)
+    if (S.loc.campus_lat_ref != null) {
+      document.getElementById('gps-lat').value = S.loc.campus_lat_ref;
+      document.getElementById('gps-lng').value = S.loc.campus_lng_ref;
+    }
+    requestAnimationFrame(() => {
+      initOSM();
+      lmap.invalidateSize();
+      drawCampusOnOSM();   // also calls drawCampusCalibPoints()
+    });
+  } else {
+    // ── Indoor: force SVG view ──────────────────────────────────────────
+    document.getElementById('room-map').style.display = 'block';
+    document.getElementById('osm-map').style.display  = 'none';
+    document.getElementById('cb-osm').checked = false;
+    document.getElementById('campus-add-section').style.display = 'none';
+    document.getElementById('btn-gen-synthetic').style.display  = 'block';
+    buildMap();
+  }
+}
+
+// ── Save room dimensions + regenerate grid ─────────────────────────────
+function saveRoom() {
+  if (!S.loc || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const w    = parseFloat(document.getElementById('dim-w').value);
+  const h    = parseFloat(document.getElementById('dim-h').value);
+  const step = parseFloat(document.getElementById('dim-step').value);
+  if (isNaN(w) || w <= 0 || isNaN(h) || h <= 0 || isNaN(step) || step <= 0) {
+    toast('Invalid dimensions', 'error'); return;
+  }
+  const hasCalib = S.calibratedIds.size > 0;
+  const warn     = document.getElementById('room-save-warning');
+  if (hasCalib && warn.style.display === 'none') {
+    warn.style.display = 'block';
+    toast('Calibration data will be lost — click Save again to confirm', 'warn');
+    return;
+  }
+  warn.style.display = 'none';
+  ws.send(JSON.stringify({
+    action:     'update_room',
+    location_id: S.loc.id,
+    width:  w,
+    height: h,
+    grid_step: step,
+  }));
+}
+
+// Show warning when any dimension changes
+['dim-w','dim-h','dim-step'].forEach(id => {
+  document.getElementById(id)?.addEventListener('input', () => {
+    const warn = document.getElementById('room-save-warning');
+    if (S.calibratedIds?.size > 0 && warn) warn.style.display = 'block';
+  });
+});
+
+// ── Save anchors ───────────────────────────────────────────────────────
+function saveAnchors() {
+  if (!S.loc || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const isCampus = S.loc.location_type === 'campus_outdoor';
+  const anchors  = {};
+  for (const a of S.anchors) {
+    if (isCampus) {
+      const lat = parseFloat(document.getElementById(`ai-${a.name}-lat`)?.value);
+      const lng = parseFloat(document.getElementById(`ai-${a.name}-lng`)?.value);
+      const bld = document.getElementById(`ai-${a.name}-bld`)?.value.trim() || null;
+      if (!isNaN(lat) && !isNaN(lng)) anchors[a.name] = {lat, lng, building: bld};
+    } else {
+      const x = parseFloat(document.getElementById(`ai-${a.name}-x`)?.value);
+      const y = parseFloat(document.getElementById(`ai-${a.name}-y`)?.value);
+      if (!isNaN(x) && !isNaN(y)) anchors[a.name] = [x, y];
+    }
+  }
+  ws.send(JSON.stringify({action: 'update_anchors', location_id: S.loc.id, anchors}));
+}
+
+function removeAnchor(name) {
+  if (!confirm(`Remove anchor ${name}? This cannot be undone.`)) return;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    action: 'remove_anchor', location_id: S.loc.id, anchor_label: name,
+  }));
+}
+
+// ── Calibration ────────────────────────────────────────────────────────
+function startCalib() {
+  const sel = document.getElementById('calib-select');
+  const id  = parseInt(sel.value);
+  if (!id || !ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({action: 'start_calibration', grid_point_id: id}));
+}
+function stopCalib() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({action: 'stop_calibration'}));
+}
+function toggleCalibration() {
+  if (S.calibActive) stopCalib(); else startCalib();
+}
+
+function selectAndCalib(id) {
+  document.getElementById('calib-select').value = id;
+  startCalib();
+}
+
+function genSynthetic() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if(confirm("This will overwrite existing calibration data with synthetic data. Continue?")) {
+      ws.send(JSON.stringify({action: 'generate_synthetic'}));
+      toast('Generating Synthetic Radio Map...', 'warn');
+  }
+}
+
+// ── Modal helpers ──────────────────────────────────────────────────────
+
+// ── Indoor anchor rows ─────────────────────────────────────────────────
+function updateModalAnchors() {
+  const w = parseFloat(document.getElementById('m-w').value) || 8;
+  const h = parseFloat(document.getElementById('m-h').value) || 6;
+  const defaults = {E0:[0.5,0.5], E1:[w-0.5,0.5], E2:[0.5,h-0.5], E3:[w-0.5,h-0.5]};
+  document.getElementById('modal-anchors').innerHTML =
+    Object.entries(defaults).map(([name,[dx,dy]]) => `
+      <div class="anchor-row" style="margin-bottom:6px;">
+        <span class="anchor-label">${name}</span>
+        <input type="number" id="ma-${name}-x" value="${dx}" step="0.1" placeholder="X">
+        <input type="number" id="ma-${name}-y" value="${dy}" step="0.1" placeholder="Y">
+      </div>`).join('');
+}
+
+function autoPlaceAnchors() {
+  const w = parseFloat(document.getElementById('m-w').value) || 8;
+  const h = parseFloat(document.getElementById('m-h').value) || 6;
+  const d = 0.5;
+  const pos = {E0:[d,d], E1:[w-d,d], E2:[d,h-d], E3:[w-d,h-d]};
+  for (const [a,[x,y]] of Object.entries(pos)) {
+    const ex = document.getElementById(`ma-${a}-x`);
+    const ey = document.getElementById(`ma-${a}-y`);
+    if (ex) ex.value = x; if (ey) ey.value = y;
+  }
+}
+
+// ── Campus modal map state ─────────────────────────────────────────────
+let _modalMap      = null;
+let _modalMarkers  = {};   // {E0: L.Marker, ...}
+let _campusNextAnc = 0;    // index into ANCHOR_NAMES for click-to-place
+
+const ANCHOR_NAMES = ['E0','E1','E2','E3'];
+
+function buildCampusAncRows() {
+  document.getElementById('modal-campus-ancs').innerHTML =
+    ANCHOR_NAMES.map(a => `
+      <div class="campus-anc-row">
+        <span class="anchor-label">${a}</span>
+        <input type="number" id="mca-${a}-lat" step="any" placeholder="Latitude"
+               oninput="syncModalMarker('${a}')">
+        <input type="number" id="mca-${a}-lng" step="any" placeholder="Longitude"
+               oninput="syncModalMarker('${a}')">
+        <input type="text" id="mca-${a}-bld" placeholder="Building (opt.)">
+        <span class="campus-anc-st" id="mca-${a}-st">○</span>
+      </div>`).join('');
+}
+
+function initModalMap() {
+  if (_modalMap) { _modalMap.invalidateSize(); return; }
+  _modalMap = L.map('modal-map-wrap', {
+    center: [47.49572, 6.80482], zoom: 17,
+    zoomControl: true,
+  });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors', maxZoom: 20,
+  }).addTo(_modalMap);
+  _modalMap.on('click', function(e) {
+    if (_campusNextAnc >= 4) return;
+    placeCampusAnchor(ANCHOR_NAMES[_campusNextAnc], e.latlng.lat, e.latlng.lng);
+    _campusNextAnc++;
+    updateCampusHint();
+  });
+}
+
+function placeCampusAnchor(name, lat, lng) {
+  const latEl = document.getElementById(`mca-${name}-lat`);
+  const lngEl = document.getElementById(`mca-${name}-lng`);
+  const stEl  = document.getElementById(`mca-${name}-st`);
+  if (latEl) latEl.value = lat.toFixed(6);
+  if (lngEl) lngEl.value = lng.toFixed(6);
+  if (stEl)  { stEl.textContent = '●'; stEl.classList.add('ok'); }
+
+  const icon = L.divIcon({
+    html: `<div style="background:var(--emitter,#c49a1a);color:#000;
+                font-family:monospace;font-weight:700;font-size:0.6rem;
+                padding:2px 4px;border-radius:2px;white-space:nowrap;">${name}</div>`,
+    iconSize: [28, 18], iconAnchor: [14, 9], className: '',
+  });
+  if (_modalMarkers[name]) {
+    _modalMarkers[name].setLatLng([lat, lng]);
+  } else {
+    _modalMarkers[name] = L.marker([lat, lng], {icon, draggable: true}).addTo(_modalMap);
+    _modalMarkers[name].on('dragend', ev => {
+      const ll = ev.target.getLatLng();
+      document.getElementById(`mca-${name}-lat`).value = ll.lat.toFixed(6);
+      document.getElementById(`mca-${name}-lng`).value = ll.lng.toFixed(6);
+    });
+  }
+}
+
+function syncModalMarker(name) {
+  const lat = parseFloat(document.getElementById(`mca-${name}-lat`)?.value);
+  const lng = parseFloat(document.getElementById(`mca-${name}-lng`)?.value);
+  if (!isNaN(lat) && !isNaN(lng)) {
+    if (_modalMarkers[name]) {
+      _modalMarkers[name].setLatLng([lat, lng]);
+    } else {
+      placeCampusAnchor(name, lat, lng);
+      // If placed manually, don't advance the click-to-place counter
+    }
+  }
+}
+
+function updateCampusHint() {
+  const el = document.getElementById('campus-hint');
+  if (!el) return;
+  if (_campusNextAnc < 4) {
+    el.textContent = `Click map → place ${ANCHOR_NAMES[_campusNextAnc]}`;
+    el.style.color = 'var(--accent)';
+  } else {
+    el.textContent = '✓ All 4 anchors placed';
+    el.style.color = 'var(--calibrated)';
+  }
+}
+
+function populateCampusPresets() {
+  const sel = document.getElementById('m-preset');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Select preset —</option>' +
+    S.campusPresets.map(p =>
+      `<option value="${p.name}" data-lat="${p.lat}" data-lng="${p.lng}"
+               data-zoom="${p.default_zoom||17}">${p.name}</option>`
+    ).join('');
+}
+
+function loadCampusPreset() {
+  const sel = document.getElementById('m-preset');
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.dataset.lat) return;
+  const lat  = parseFloat(opt.dataset.lat);
+  const lng  = parseFloat(opt.dataset.lng);
+  const zoom = parseInt(opt.dataset.zoom) || 17;
+  document.getElementById('m-lat').value  = lat;
+  document.getElementById('m-lng').value  = lng;
+  document.getElementById('m-zoom').value = zoom;
+  if (_modalMap) _modalMap.setView([lat, lng], zoom);
+  const nameEl = document.getElementById('m-name');
+  if (nameEl && !nameEl.value) nameEl.value = opt.value;
+}
+
+function onModalCenterChange() {
+  const lat  = parseFloat(document.getElementById('m-lat').value);
+  const lng  = parseFloat(document.getElementById('m-lng').value);
+  const zoom = parseInt(document.getElementById('m-zoom').value) || 17;
+  if (!isNaN(lat) && !isNaN(lng) && _modalMap) _modalMap.setView([lat, lng], zoom);
+}
+
+// ── Mode toggle ────────────────────────────────────────────────────────
+function switchModalMode(mode) {
+  const indSec  = document.getElementById('modal-indoor-sec');
+  const camSec  = document.getElementById('modal-campus-sec');
+  const card    = document.getElementById('modal-card');
+  const optInd  = document.getElementById('opt-indoor');
+  const optCam  = document.getElementById('opt-campus');
+
+  if (mode === 'campus_outdoor') {
+    document.querySelector('input[name="m-type"][value="campus_outdoor"]').checked = true;
+    indSec.style.display  = 'none';
+    camSec.style.display  = 'block';
+    card.classList.add('wide');
+    optInd.classList.remove('active'); optCam.classList.add('active');
+    // Lazy-init map after DOM update
+    requestAnimationFrame(() => {
+      initModalMap();
+      const lat = parseFloat(document.getElementById('m-lat').value) || 47.49572;
+      const lng = parseFloat(document.getElementById('m-lng').value) || 6.80482;
+      _modalMap.setView([lat, lng], parseInt(document.getElementById('m-zoom').value) || 17);
+    });
+  } else {
+    document.querySelector('input[name="m-type"][value="indoor_room"]').checked = true;
+    indSec.style.display  = 'block';
+    camSec.style.display  = 'none';
+    card.classList.remove('wide');
+    optCam.classList.remove('active'); optInd.classList.add('active');
+  }
+}
+
+// ── Open / Close ───────────────────────────────────────────────────────
+function openModal() {
+  // Reset to indoor mode
+  switchModalMode('indoor_room');
+  updateModalAnchors();
+  // Reset campus state
+  _campusNextAnc = 0;
+  for (const m of Object.values(_modalMarkers)) {
+    if (_modalMap) _modalMap.removeLayer(m);
+  }
+  _modalMarkers = {};
+  buildCampusAncRows();
+  updateCampusHint();
+  populateCampusPresets();
+  document.getElementById('create-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('create-modal').classList.remove('open');
+}
+
+// ── Create location ────────────────────────────────────────────────────
+function createLocation() {
+  const name = document.getElementById('m-name').value.trim();
+  if (!name) { toast('Please enter a location name', 'warn'); return; }
+  if (!ws || ws.readyState !== WebSocket.OPEN) { toast('Not connected', 'error'); return; }
+
+  const mode = document.querySelector('input[name="m-type"]:checked')?.value || 'indoor_room';
+
+  if (mode === 'indoor_room') {
+    const w    = parseFloat(document.getElementById('m-w').value);
+    const h    = parseFloat(document.getElementById('m-h').value);
+    const step = parseFloat(document.getElementById('m-step').value) || 0.5;
+    const ancs = {};
+    for (const a of ANCHOR_NAMES) {
+      const x = parseFloat(document.getElementById(`ma-${a}-x`)?.value);
+      const y = parseFloat(document.getElementById(`ma-${a}-y`)?.value);
+      if (!isNaN(x) && !isNaN(y)) ancs[a] = [x, y];
+    }
+    ws.send(JSON.stringify({
+      action: 'create_location', location_type: 'indoor_room',
+      name, width: w, height: h, grid_step: step, anchors: ancs,
+    }));
+
+  } else {
+    const lat_ref = parseFloat(document.getElementById('m-lat').value);
+    const lng_ref = parseFloat(document.getElementById('m-lng').value);
+    const zoom    = parseInt(document.getElementById('m-zoom').value) || 17;
+    if (isNaN(lat_ref) || isNaN(lng_ref)) {
+      toast('Please set the center coordinates', 'warn'); return;
+    }
+    const ancs = {};
+    let placed = 0;
+    for (const a of ANCHOR_NAMES) {
+      const lat = parseFloat(document.getElementById(`mca-${a}-lat`)?.value);
+      const lng = parseFloat(document.getElementById(`mca-${a}-lng`)?.value);
+      const bld = document.getElementById(`mca-${a}-bld`)?.value.trim() || null;
+      if (!isNaN(lat) && !isNaN(lng)) { ancs[a] = {lat, lng, building: bld}; placed++; }
+    }
+    if (placed < 2) { toast('Place at least 2 anchors on the map', 'warn'); return; }
+    ws.send(JSON.stringify({
+      action:        'create_location',
+      location_type: 'campus_outdoor',
+      name,
+      campus_lat_ref: lat_ref,
+      campus_lng_ref: lng_ref,
+      campus_zoom:    zoom,
+      anchors:        ancs,
+    }));
+  }
+  closeModal();
+}
+
+// ── WebSocket ──────────────────────────────────────────────────────────
+let ws = null;
+let reconnectTimer = null;
+
+function connect() {
+  if (ws && ws.readyState <= WebSocket.OPEN) return;
+  ws = new WebSocket('ws://127.0.0.1:8765');
+
+  ws.onopen = () => {
+    S.connected = true;
+    document.getElementById('conn-dot').classList.add('ok');
+    document.getElementById('conn-label').textContent = 'Connected';
+    ws.send(JSON.stringify({action: 'get_locations'}));
+  };
+
+  ws.onclose = () => {
+    S.connected = false;
+    document.getElementById('conn-dot').classList.remove('ok');
+    document.getElementById('conn-label').textContent = 'Disconnected';
+    toast('Server disconnected — retrying in 3s', 'error', 3000);
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => {};
+
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'active_location') {
+      applyActiveLocation(msg);
+    }
+
+    else if (msg.type === 'locations_list') {
+      S.locations = msg.locations || [];
+      buildLocSelect();
+    }
+
+    else if (msg.type === 'anchors_update') {
+      if (msg.anchors) {
+        S.anchors = msg.anchors.map(a => ({
+          name:     a.id || a.name,
+          x:        a.x,           y:        a.y,
+          lat:      a.lat  ?? null, lng:     a.lng      ?? null,
+          building: a.building     ?? null,
+        }));
+        buildAnchorInputs();
+        if (S.loc?.location_type === 'campus_outdoor') drawCampusOnOSM();
+        else buildMap();
+      }
+    }
+
+    else if (msg.type === 'anchors_saved') {
+      toast('✓ Anchors saved', 'success');
+    }
+
+    else if (msg.type === 'location_created') {
+      const n = msg.grid_count || msg.location?.grid_count || '?';
+      const locName = msg.location?.name || msg.name || '?';
+      const locType = msg.location?.location_type || msg.location_type || 'indoor_room';
+      if (locType === 'campus_outdoor') {
+        toast(`✓ "${locName}" created — campus location`, 'success');
+      } else {
+        toast(`✓ "${locName}" created — ${n} grid points`, 'success');
+      }
+      document.getElementById('m-name').value = '';
+    }
+
+    else if (msg.type === 'campus_presets') {
+      S.campusPresets = msg.presets || [];
+    }
+
+    else if (msg.type === 'data_saved') {
+      toast(`✓ Saved to ${msg.folder}`, 'success');
+    }
+
+    else if (msg.type === 'fp_index') {
+      renderMapsLibrary(msg.maps || []);
+    }
+
+    else if (msg.type === 'fp_export') {
+      // Browser download of fingerprint map JSON
+      const blob = new Blob(
+        [JSON.stringify(msg.data, null, 2)],
+        {type: 'application/json'}
+      );
+      const a  = document.createElement('a');
+      a.href   = URL.createObjectURL(blob);
+      a.download = msg.filename || `fp_map_${msg.location_id}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast(`Downloaded ${a.download}`, 'success');
+    }
+
+    else if (msg.type === 'server_mode') {
+      const badge = document.getElementById('data-source-badge');
+      if (msg.sim) {
+        badge.style.display = 'block';
+        badge.style.background = '#2a1a00';
+        badge.style.color = '#c49a1a';
+        badge.style.borderColor = '#c49a1a';
+        badge.textContent = '⚠ SIMULATION';
+        badge.title = 'Data is synthetic — lora_rx_sim.py is the source';
+      } else {
+        badge.style.display = 'block';
+        badge.style.background = '#0a2010';
+        badge.style.color = '#278a55';
+        badge.style.borderColor = '#278a55';
+        badge.textContent = '✔ LIVE HARDWARE';
+        badge.title = `Real data from GNU Radio on ${msg.zmq_addr}`;
+      }
+    }
+
+    else if (msg.type === 'room_updated') {
+      // Server sends full active_location after room update — just toast
+      toast(`✓ Room updated: ${msg.width}×${msg.height} m, ${msg.grid_count} pts`, 'success');
+    }
+
+    else if (msg.type === 'anchor_removed') {
+      S.anchors = (msg.anchors || []).map(a => ({
+        name: a.name || a.id, x: a.x, y: a.y,
+        lat: a.lat ?? null, lng: a.lng ?? null, building: a.building ?? null,
+      }));
+      buildAnchorInputs();
+      if (S.loc?.location_type === 'campus_outdoor') drawCampusOnOSM();
+      else buildMap();
+      toast(`✓ Anchor ${msg.label} removed`, 'success');
+    }
+
+    else if (msg.type === 'anchor_updated') {
+      toast(`✓ Anchor ${msg.label} updated`, 'success');
+    }
+
+    else if (msg.type === 'calibration_point_removed') {
+      const id = msg.grid_point_id;
+      S.gridPoints     = S.gridPoints.filter(p => p.id !== id);
+      S.calibratedIds  = new Set(msg.calibrated_point_ids || []);
+      if (_campusCalibMarkers[id]) {
+        lmap?.removeLayer(_campusCalibMarkers[id]);
+        delete _campusCalibMarkers[id];
+      }
+      buildCalibSelect();
+      buildCalibList();
+      document.getElementById('top-pts').textContent =
+        `${S.gridPoints.length} pts / ${S.calibratedIds.size} cal`;
+      toast('Point removed', 'success');
+    }
+
+    else if (msg.type === 'calibration_point_moved') {
+      toast(`Point moved — re-calibrate for accuracy`, 'warn');
+    }
+
+    else if (msg.type === 'campus_calibration_point_added') {
+      const gp = {
+        id: msg.grid_point_id, label: msg.label,
+        x: msg.x, y: msg.y,
+        lat: msg.lat, lng: msg.lng,
+        point_type: 'campus_calib',
+      };
+      S.gridPoints.push(gp);
+      addCampusCalibMarker(gp.id, gp.label, gp.lat, gp.lng, false);
+      buildCalibSelect();
+      document.getElementById('calib-select').value = gp.id;
+      document.getElementById('top-pts').textContent =
+        `${S.gridPoints.length} pts / ${S.calibratedIds.size} cal`;
+      const acc = msg.accuracy_m;
+      toast(acc && acc > 10
+        ? `GPS acc: ${acc.toFixed(0)} m — ${msg.label} added`
+        : `✓ ${msg.label} added`,
+        acc && acc > 10 ? 'warn' : 'success');
+    }
+
+    else if (msg.type === 'position_update') {
+      // Count every packet for statistics
+      S.pktCount++;
+      S.pktTimes.push(Date.now());
+      // Throttle rendering to 10 fps max — skip if last render < 100ms ago
+      const _now = Date.now();
+      if (_now - (S._lastRender || 0) < 100) return;
+      S._lastRender = _now;
+      if (S.pktTimes.length > 20) S.pktTimes.shift();
+      const rate = S.pktTimes.length > 1
+        ? (S.pktTimes.length - 1) / ((S.pktTimes.at(-1) - S.pktTimes[0]) / 1000)
+        : 0;
+      document.getElementById('stat-pkts').textContent = S.pktCount.toLocaleString();
+      document.getElementById('stat-rate').textContent = rate.toFixed(1) + '/s';
+
+      if (msg.rssi) {
+          S.rssi = msg.rssi;
+          updateRssiBars(msg.rssi);
+          updateCircles(msg.rssi);
+          addLog(msg.rssi);
+      }
+
+      const algoMap = {nlat: msg.nlat, fp: msg.fp, hmm: msg.hmm};
+      for (const [algo, pos] of Object.entries(algoMap)) {
+        const isVisible = document.getElementById(`cb-${algo}`)?.checked;
+        const dotEl = document.getElementById(`dot-${algo}`);
+
+        if (!pos || !isVisible) {
+            if (dotEl) dotEl.style.display = 'none';
+            continue;
+        }
+
+        if (dotEl) dotEl.style.display = '';
+        moveDoc(`dot-${algo}`, pos.x, pos.y);
+        pushTrail(algo, pos.x, pos.y);
+        updateOSM(algo, pos.x, pos.y);
+
+        const posEl = document.getElementById(`acc-${algo}-pos`);
+        const stEl  = document.getElementById(`acc-${algo}-st`);
+        if (posEl) posEl.textContent = `${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}`;
+        if (stEl && algo !== 'nlat') {
+          stEl.textContent = '● active';
+          stEl.className = 'status-active';
+        }
+      }
+      // FP/HMM inactive if null
+      for (const algo of ['fp', 'hmm']) {
+        if (!algoMap[algo]) {
+          const st = document.getElementById(`acc-${algo}-st`);
+          if (st) { st.textContent = '○ no calib'; st.className = 'status-inactive'; }
+        }
+      }
+
+      // Save full position state so toggle replays work correctly
+      S.positions = {
+        nlat:          msg.nlat,
+        fp:            msg.fp,
+        hmm:           msg.hmm,
+        nlat_raw:      msg.nlat_raw      || null,
+        intersections: msg.intersections || [],
+        uncertainty_m: msg.uncertainty_m || 0,
+      };
+
+      // Computation transparency (raw dot, intersections, confidence, errors)
+      updateTransparency(msg);
+      // Campus OSM: range circles + intersections + confidence + raw dot
+      updateCampusOSM(msg);
+    }
+
+    else if (msg.type === 'calibration_started') {
+      S.calibActive = true;
+      S.calibGpId   = msg.grid_point_id;
+      document.getElementById('btn-start-calib').disabled = true;
+      document.getElementById('btn-stop-calib').disabled  = false;
+      document.getElementById('calib-label').textContent  = `Calibrating ${msg.point}…`;
+      document.getElementById('calib-bar').style.width    = '0%';
+      updateGpDot(msg.grid_point_id, 'act');
+    }
+
+    else if (msg.type === 'calibration_progress') {
+      const pct = Math.round((msg.count / msg.total) * 100);
+      document.getElementById('calib-bar').style.width   = `${pct}%`;
+      document.getElementById('calib-label').textContent =
+        `${msg.point}: ${msg.count}/${msg.total}`;
+    }
+
+    else if (msg.type === 'calibration_complete') {
+      S.calibActive = false;
+      S.calibGpId   = null;
+      document.getElementById('btn-start-calib').disabled = false;
+      document.getElementById('btn-stop-calib').disabled  = true;
+      document.getElementById('calib-label').textContent  = `✓ ${msg.point} done`;
+      document.getElementById('calib-bar').style.width    = '100%';
+
+      const ids = msg.calibrated_point_ids || [];
+      S.calibratedIds = new Set(ids);
+      document.getElementById('top-pts').textContent =
+        `${S.gridPoints.length} pts / ${S.calibratedIds.size} cal`;
+
+      // Update dots
+      updateGpDot(msg.grid_point_id, 'cal');
+      buildCalibList();
+      // Campus: turn gray calibration marker → green
+      if (S.loc?.location_type === 'campus_outdoor') {
+        const gp = S.gridPoints.find(p => p.id === msg.grid_point_id);
+        if (gp?.lat != null)
+          addCampusCalibMarker(gp.id, gp.label, gp.lat, gp.lng, true);
+      }
+
+      const means = Object.entries(msg.means || {})
+        .map(([k,v]) => `${k}:${v}dBm`).join(' ');
+      toast(`✓ ${msg.point} calibrated  ${means}`, 'success');
+    }
+
+    else if (msg.type === 'map_download') {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(msg.data, null, 2));
+      const downloadAnchorNode = document.createElement('a');
+      downloadAnchorNode.setAttribute("href", dataStr);
+      downloadAnchorNode.setAttribute("download", S.loc.name.replace(/\s+/g, '_') + "_radio_map.json");
+      document.body.appendChild(downloadAnchorNode);
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+    }
+
+    else if (msg.type === 'upload_success') {
+      toast('✓ Map imported successfully', 'success');
+    }
+    else if (msg.type === 'upload_error') {
+      toast('Upload Failed: ' + msg.msg, 'error');
+    }
+  };
+}
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === ' ' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {
+    e.preventDefault();
+    toggleCalibration();
+  }
+  if (e.key === 'Escape') closeModal();
+});
+
+// ── Trail / circles / transparency checkbox listeners ─────────────────
+document.getElementById('cb-trail').addEventListener('change', () => {
+  for (const algo of ['nlat','fp','hmm']) redrawTrail(algo);
+});
+document.getElementById('cb-circles').addEventListener('change', () => {
+  document.getElementById('circles-layer').style.display =
+    document.getElementById('cb-circles').checked ? '' : 'none';
+});
+['cb-raw-nlat','cb-intersect','cb-confidence'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', () => {
+    if (S.positions?.nlat) updateTransparency(S.positions);
+  });
+});
+
+// ── SVG Ground Truth: click = place, Shift+click = clear ──────────────
+document.getElementById('room-map').addEventListener('click', e => {
+  if (!document.getElementById('cb-gt')?.checked) return;
+  const svg  = document.getElementById('room-map');
+  const rect = svg.getBoundingClientRect();
+  const vb   = svg.viewBox.baseVal;
+  if (!vb || vb.width === 0) return;
+  const rx   = ((e.clientX - rect.left) / rect.width)  * vb.width;
+  const ry   = ((e.clientY - rect.top)  / rect.height) * vb.height;
+  const lx   = (rx - PAD.l) / PX_PER_M;
+  const ly   = (S.loc?.height || 6) - (ry - PAD.t) / PX_PER_M;
+  if (e.shiftKey) { clearGT(); return; }
+  const W = S.loc?.width || 8, H = S.loc?.height || 6;
+  if (lx >= 0 && lx <= W && ly >= 0 && ly <= H)
+    setGT(Math.round(lx * 100) / 100, Math.round(ly * 100) / 100);
+});
+
+// ── Save to data/ folder ──────────────────────────────────────────────
+function saveToDataFolder() {
+  if (!S.loc || !ws || ws.readyState !== WebSocket.OPEN) {
+    toast('Not connected', 'error'); return;
+  }
+  ws.send(JSON.stringify({action: 'save_location_data', location_id: S.loc.id}));
+  toast('Saving to data/ folder…', 'warn');
+}
+
+// ── Maps Library ──────────────────────────────────────────────────────
+function openMapsLibrary() {
+  document.getElementById('maps-modal').classList.add('open');
+  if (ws && ws.readyState === WebSocket.OPEN)
+    ws.send(JSON.stringify({action: 'get_fp_index'}));
+}
+function closeMapsLibrary() {
+  document.getElementById('maps-modal').classList.remove('open');
+}
+
+function renderMapsLibrary(maps) {
+  const body = document.getElementById('maps-lib-body');
+  if (!maps || maps.length === 0) {
+    body.innerHTML = `<div style="color:var(--dim);text-align:center;padding:30px;">
+      No fingerprint maps saved yet.<br>
+      <span style="font-size:0.6rem;">Calibrate a room then come back here.</span>
+    </div>`;
+    return;
+  }
+  body.innerHTML = `
+    <table class="maps-table">
+      <thead>
+        <tr>
+          <th>Location</th>
+          <th>Type</th>
+          <th>Points</th>
+          <th>Saved</th>
+          <th style="text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${maps.map(m => {
+          const badge = m.location_type === 'campus_outdoor'
+            ? '<span class="map-badge-campus">CAMPUS</span>'
+            : '<span class="map-badge-indoor">INDOOR</span>';
+          const date = m.updated_at
+            ? m.updated_at.replace('T', ' ').slice(0, 16)
+            : '—';
+          return `<tr>
+            <td style="font-weight:600;">${m.location_name}</td>
+            <td>${badge}</td>
+            <td style="font-family:var(--mono);">${m.points}</td>
+            <td style="color:var(--dim);font-size:0.62rem;">${date}</td>
+            <td style="text-align:right;">
+              <button class="btn btn-ghost btn-sm"
+                      onclick="exportLibMap(${m.location_id},'${m.filename}')">
+                📥 Download
+              </button>
+              <button class="btn btn-accent btn-sm" style="margin-left:4px;"
+                      onclick="activateLibMap(${m.location_id})">
+                Load
+              </button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <div style="margin-top:10px;font-size:0.6rem;color:var(--dim);">
+      Saved in: <code>fingerprint_maps/</code> folder next to positioning_server.py
+    </div>`;
+}
+
+function exportLibMap(locId, filename) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({action: 'export_fp_map', location_id: locId}));
+}
+
+function activateLibMap(locId) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({action: 'set_active', location_id: locId}));
+  closeMapsLibrary();
+  toast(`Switching to location ${locId}…`, 'success');
+}
+
+function importLibMap(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        toast('Not connected', 'error'); return;
+      }
+      ws.send(JSON.stringify({action: 'upload_map', map_data: data.calibration_points || data}));
+      toast(`Importing ${file.name}…`, 'warn');
+      closeMapsLibrary();
+    } catch { toast('Invalid JSON file', 'error'); }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ── Map Upload / Download ─────────────────────────────────────────────
+function downloadMap() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({action: 'download_map'}));
+  toast('Exporting Map...', 'success');
+}
+
+function uploadMap(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const mapData = JSON.parse(e.target.result);
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      ws.send(JSON.stringify({action: 'upload_map', map_data: mapData}));
+      toast('Importing Map...', 'warn');
+    } catch (err) {
+      toast('Invalid JSON file', 'error');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ── OSM Leaflet Integration ───────────────────────────────────────────
+let lmap = null;
+let osmMarkers = { nlat: null, fp: null, hmm: null };
+let roomPolygon = null;
+let osmAnchorMarkers = [];
+let _campusCalibMarkers = {};   // {gp_id: L.CircleMarker}
+let _mapPlacementMode   = false;
+
+function getRefGPS() {
+  const lat = parseFloat(document.getElementById('gps-lat').value) || 47.639674;
+  const lng = parseFloat(document.getElementById('gps-lng').value) || 6.863849;
+  return { lat, lng };
+}
+
+function xyToLatLng(x, y) {
+  const ref = getRefGPS();
+  const dLat = y / 111111.0;
+  const dLng = x / (111111.0 * Math.cos(ref.lat * Math.PI / 180));
+  return [ref.lat + dLat, ref.lng + dLng];
+}
+
+function applyGPS() {
+  if (lmap) {
+    const ref = getRefGPS();
+    lmap.setView([ref.lat, ref.lng], 20);
+    drawRoomOnOSM();
+  }
+}
+
+function initOSM() {
+  if (lmap) return;
+  const ref = getRefGPS();
+  lmap = L.map('osm-map').setView([ref.lat, ref.lng], 20);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+              { maxZoom: 22 }).addTo(lmap);
+  lmap.on('click', function(e) {
+    if (!_mapPlacementMode) return;
+    deactivateMapPlacement();
+    sendAddCampusCalibPoint(e.latlng.lat, e.latlng.lng, 'manual_click', null);
+  });
+}
+
+// ── Phase 4: OSM range circles, intersections, confidence ─────────────
+let _osmRangeCircles     = {};
+let _osmInterMarkers     = [];
+let _osmConfidenceCircle = null;
+let _osmRawMarker        = null;
+const NLateration_A = -42.0, NLateration_N = 2.2;
+
+function updateCampusOSM(msg) {
+  if (!lmap || S.loc?.location_type !== 'campus_outdoor') return;
+  const showCircles = document.getElementById('cb-circles')?.checked;
+  const showInter   = document.getElementById('cb-intersect')?.checked;
+  const showRaw     = document.getElementById('cb-raw-nlat')?.checked;
+  const showConf    = document.getElementById('cb-confidence')?.checked;
+
+  // Range circles — L.circle uses metres directly
+  for (const a of S.anchors) {
+    if (a.lat == null) continue;
+    const rssi = msg.rssi?.[a.name];
+    const dist = rssi != null
+      ? Math.max(1, Math.pow(10, (NLateration_A - rssi) / (10 * NLateration_N)))
+      : null;
+    if (showCircles && dist != null) {
+      if (_osmRangeCircles[a.name]) {
+        _osmRangeCircles[a.name].setRadius(dist)
+          .setStyle({opacity: 0.6, fillOpacity: 0.05});
+      } else {
+        _osmRangeCircles[a.name] = L.circle([a.lat, a.lng], {
+          radius: dist, color: '#c49a1a', weight: 1,
+          dashArray: '5,5', fillOpacity: 0.05,
+        }).addTo(lmap);
+      }
+    } else if (_osmRangeCircles[a.name]) {
+      _osmRangeCircles[a.name].setStyle({opacity: 0, fillOpacity: 0});
+    }
+  }
+
+  // Intersection markers
+  _osmInterMarkers.forEach(m => lmap.removeLayer(m));
+  _osmInterMarkers = [];
+  if (showInter && msg.intersections?.length) {
+    for (const pt of msg.intersections) {
+      const ll = campusXYtoLatLng(pt.x, pt.y);
+      _osmInterMarkers.push(
+        L.circleMarker(ll, {radius: 4, color:'#c49a1a', weight:2, fill:false}).addTo(lmap)
+      );
+    }
+  }
+
+  // Raw NLat dot
+  if (showRaw && msg.nlat_raw) {
+    const ll = campusXYtoLatLng(msg.nlat_raw.x, msg.nlat_raw.y);
+    if (_osmRawMarker) _osmRawMarker.setLatLng(ll).setStyle({opacity:1});
+    else _osmRawMarker = L.circleMarker(ll,
+      {radius:5, color:'#d84a2e', weight:2, fill:false}).addTo(lmap);
+  } else if (_osmRawMarker) _osmRawMarker.setStyle({opacity:0});
+
+  // Confidence circle
+  if (showConf && msg.nlat && (msg.uncertainty_m || 0) > 0) {
+    const ll = campusXYtoLatLng(msg.nlat.x, msg.nlat.y);
+    if (_osmConfidenceCircle) {
+      _osmConfidenceCircle.setLatLng(ll).setRadius(msg.uncertainty_m)
+        .setStyle({opacity:0.5, fillOpacity:0.1});
+    } else {
+      _osmConfidenceCircle = L.circle(ll, {
+        radius: msg.uncertainty_m, color:'#d84a2e', weight:1, fillOpacity:0.1,
+      }).addTo(lmap);
+    }
+  } else if (_osmConfidenceCircle) {
+    _osmConfidenceCircle.setStyle({opacity:0, fillOpacity:0});
+  }
+}
+
+// Campus-aware projection: local (x,y) → [lat, lng] using SW-corner ref
+function campusXYtoLatLng(x, y) {
+  const swLat = S.loc?.campus_lat_ref;
+  const swLng = S.loc?.campus_lng_ref;
+  if (swLat == null || swLng == null) return xyToLatLng(x, y);
+  const M = 111111.0;
+  const lat = swLat + y / M;
+  const lng = swLng + x / (M * Math.cos(swLat * Math.PI / 180));
+  return [lat, lng];
+}
+
+// ── Draw campus anchors on OSM (draggable) ────────────────────────────
+function drawCampusOnOSM() {
+  if (!lmap || !S.loc) return;
+  if (roomPolygon) { lmap.removeLayer(roomPolygon); roomPolygon = null; }
+  osmAnchorMarkers.forEach(m => lmap.removeLayer(m));
+  osmAnchorMarkers = [];
+
+  const bounds = [];
+  S.anchors.forEach(a => {
+    if (a.lat == null || a.lng == null) return;
+    bounds.push([a.lat, a.lng]);
+    const icon = L.divIcon({
+      html: `<div style="background:#c49a1a;color:#000;font-family:monospace;
+                  font-weight:700;font-size:0.6rem;padding:2px 4px;
+                  border-radius:2px;white-space:nowrap;">${a.name}</div>`,
+      iconSize: [28, 18], iconAnchor: [14, 9], className: '',
+    });
+    const marker = L.marker([a.lat, a.lng], {icon, draggable: true})
+      .addTo(lmap);
+    marker.on('dragend', ev => {
+      const ll = ev.target.getLatLng();
+      document.getElementById(`ai-${a.name}-lat`) &&
+        (document.getElementById(`ai-${a.name}-lat`).value = ll.lat.toFixed(6));
+      document.getElementById(`ai-${a.name}-lng`) &&
+        (document.getElementById(`ai-${a.name}-lng`).value = ll.lng.toFixed(6));
+      ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify({
+        action: 'update_single_anchor', location_id: S.loc.id,
+        anchor_label: a.name, lat: ll.lat, lng: ll.lng,
+        building: document.getElementById(`ai-${a.name}-bld`)?.value || null,
+      }));
+    });
+    osmAnchorMarkers.push(marker);
+  });
+
+  if (bounds.length > 0) lmap.fitBounds(bounds, {padding: [70, 70]});
+  drawCampusCalibPoints();
+}
+
+// ── Draw indoor room on OSM (uses manual GPS reference + xyToLatLng) ───
+function drawRoomOnOSM() {
+  if (!lmap || !S.loc) return;
+  if (roomPolygon) lmap.removeLayer(roomPolygon);
+  osmAnchorMarkers.forEach(m => lmap.removeLayer(m));
+  osmAnchorMarkers = [];
+
+  const bounds = [
+    xyToLatLng(0, 0), xyToLatLng(S.loc.width, 0),
+    xyToLatLng(S.loc.width, S.loc.height), xyToLatLng(0, S.loc.height),
+  ];
+  roomPolygon = L.polygon(bounds, {color: '#c49a1a', weight: 2, fillOpacity: 0.1}).addTo(lmap);
+  lmap.fitBounds(roomPolygon.getBounds(), {padding: [50, 50]});
+
+  S.anchors.forEach(a => {
+    const latlng = xyToLatLng(a.x, a.y);
+    const marker = L.circleMarker(latlng, {
+      radius: 6, color: '#000', weight: 1, fillColor: '#c49a1a', fillOpacity: 1,
+    }).bindTooltip(a.name, {
+      permanent: true, direction: 'top',
+      className: 'anchor-tooltip', offset: [0, -5],
+    }).addTo(lmap);
+    osmAnchorMarkers.push(marker);
+  });
+}
+
+// ── Campus placement mode ──────────────────────────────────────────────
+function activateMapPlacement() {
+  _mapPlacementMode = true;
+  const btn = document.getElementById('btn-map-place');
+  const st  = document.getElementById('place-status');
+  if (btn) { btn.style.borderColor = 'var(--accent)'; btn.style.color = 'var(--accent)'; }
+  if (lmap) lmap.getContainer().style.cursor = 'crosshair';
+  if (st)   st.textContent = '⊙ Click map to place point';
+}
+function deactivateMapPlacement() {
+  _mapPlacementMode = false;
+  const btn = document.getElementById('btn-map-place');
+  const st  = document.getElementById('place-status');
+  if (btn) { btn.style.borderColor = ''; btn.style.color = ''; }
+  if (lmap) lmap.getContainer().style.cursor = '';
+  if (st)   st.textContent = '';
+}
+function toggleMapPlacement() {
+  _mapPlacementMode ? deactivateMapPlacement() : activateMapPlacement();
+}
+
+function addCampusPointGPS() {
+  if (!navigator.geolocation) {
+    toast('Geolocation unavailable — use map click', 'warn'); return;
+  }
+  const st = document.getElementById('place-status');
+  if (st) st.textContent = '⏳ Getting GPS fix…';
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      if (st) st.textContent = '';
+      const acc = pos.coords.accuracy;
+      if (acc > 10)
+        toast(`GPS accuracy: ${acc.toFixed(0)} m — consider map click`, 'warn');
+      sendAddCampusCalibPoint(pos.coords.latitude, pos.coords.longitude, 'gps', acc);
+    },
+    err => {
+      if (st) st.textContent = '';
+      toast(`GPS: ${err.message}`, 'error');
+    },
+    {enableHighAccuracy: true, timeout: 8000, maximumAge: 0}
+  );
+}
+
+function sendAddCampusCalibPoint(lat, lng, source, accuracy_m) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    toast('Not connected', 'error'); return;
+  }
+  ws.send(JSON.stringify({
+    action: 'add_campus_calibration_point',
+    lat, lng, source, accuracy_m: accuracy_m ?? null,
+  }));
+}
+
+// ── Campus calibration point markers on OSM ────────────────────────────
+function addCampusCalibMarker(gp_id, label, lat, lng, calibrated) {
+  if (!lmap) return;
+  if (_campusCalibMarkers[gp_id]) lmap.removeLayer(_campusCalibMarkers[gp_id]);
+  const m = L.circleMarker([lat, lng], {
+    radius: 7, color: '#0a0b0e', weight: 1.5,
+    fillColor: calibrated ? '#278a55' : '#5a564e', fillOpacity: 0.9,
+  }).bindTooltip(label, {permanent: false, direction: 'top', offset: [0, -5]})
+    .addTo(lmap);
+  _campusCalibMarkers[gp_id] = m;
+}
+
+function removeCalibPoint() {
+  const sel   = document.getElementById('calib-select');
+  const id    = parseInt(sel.value);
+  if (!id) { toast('Select a point first', 'warn'); return; }
+  if (!ws || ws.readyState !== WebSocket.OPEN) { toast('Not connected', 'error'); return; }
+  const label = S.gridPoints.find(p => p.id === id)?.label || `id:${id}`;
+  ws.send(JSON.stringify({action: 'remove_calibration_point', grid_point_id: id}));
+  toast(`Removing ${label}…`, 'warn');
+}
+
+function drawCampusCalibPoints() {
+  if (!lmap) return;
+  for (const m of Object.values(_campusCalibMarkers)) lmap.removeLayer(m);
+  _campusCalibMarkers = {};
+  for (const p of S.gridPoints) {
+    if (p.point_type !== 'campus_calib' || p.lat == null) continue;
+    addCampusCalibMarker(p.id, p.label, p.lat, p.lng, S.calibratedIds.has(p.id));
+  }
+}
+
+function toggleOSM() {
+  const show = document.getElementById('cb-osm').checked;
+  document.getElementById('room-map').style.display = show ? 'none' : 'block';
+  document.getElementById('osm-map').style.display  = show ? 'block' : 'none';
+  if (show) {
+    initOSM();
+    lmap.invalidateSize();
+    if (S.loc?.location_type === 'campus_outdoor') drawCampusOnOSM();
+    else drawRoomOnOSM();
+  }
+}
+
+function updateOSM(algo, x, y) {
+  if (!lmap || !document.getElementById('cb-osm').checked) return;
+  const latlng = S.loc?.location_type === 'campus_outdoor'
+    ? campusXYtoLatLng(x, y)
+    : xyToLatLng(x, y);
+  const colors = {nlat: '#d84a2e', fp: '#6b5cd4', hmm: '#278a55'};
+  if (!osmMarkers[algo]) {
+    osmMarkers[algo] = L.circleMarker(latlng, {
+      radius: 5, color: colors[algo], fillOpacity: 1,
+    }).addTo(lmap);
+  } else {
+    osmMarkers[algo].setLatLng(latlng);
+  }
+}
+
+// ── Move campus anchor marker when sidebar lat/lng edited ──────────────
+function moveCampusAnchor(name) {
+  const lat = parseFloat(document.getElementById(`ai-${name}-lat`)?.value);
+  const lng = parseFloat(document.getElementById(`ai-${name}-lng`)?.value);
+  if (isNaN(lat) || isNaN(lng) || !lmap) return;
+  const a = S.anchors.find(x => x.name === name);
+  if (a) { a.lat = lat; a.lng = lng; }
+  // Update marker on map if it exists
+  const idx = osmAnchorMarkers.findIndex(m => m.getTooltip()?.getContent() === name);
+  if (idx >= 0) osmAnchorMarkers[idx].setLatLng([lat, lng]);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>
